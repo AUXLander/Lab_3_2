@@ -1,0 +1,5 @@
+﻿  Soution.cpp
+D:\Study\Lab_3_2\Lab_3_2\Intera.h(14): warning C4793: Integral::getTick: функция скомпилирована как машинная:
+D:\Study\Lab_3_2\Lab_3_2\Intera.h(14): warning C4793: 	Встроенный машинный код на языке ассемблера в управляемом коде не поддерживается
+  Soution.obj : обнаружен модуль MSIL; для MSIL последовательная компоновка отключена; выполняется полная компоновка
+  Lab_3_2.vcxproj -> D:\Study\Lab_3_2\Debug\Lab_3_2.exe
