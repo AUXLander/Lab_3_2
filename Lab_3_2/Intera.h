@@ -17,9 +17,9 @@ public:
 	static double min;
 	static double max;
 
-	static double Numeric(double(*f)(double), double a, double b, unsigned int countPoints = 1000) {
+	static double Numeric(double(*f)(double), double a, double b, unsigned int N = 1000) {
 		double square = 0;
-		double step_h = (b - a) / (double)countPoints;
+		double step_h = (b - a) / (double)N;
 		for (double x = a; x < b; x += step_h) {
 			square += std::max(f(x), 0.0);
 		}
@@ -59,7 +59,7 @@ public:
 			squarePoints.push_back({
 				urd_Ox(GRN),
 				urd_Oy(GRN)
-			});
+				});
 		}
 
 		return squarePoints;
@@ -78,10 +78,55 @@ public:
 		return ((double)countIn / (double)length);
 	}
 
+	static std::vector<double> uniformRandomOnLine(double a, double b, unsigned int N) {
+		std::mt19937 GRN;
+		std::uniform_real_distribution<> urd_Ox(a, b);
+
+		std::vector<double> linePoints;
+
+		GRN.seed(getTick());
+
+		for (unsigned int i = 0; i < N; i++) {
+			linePoints.push_back(urd_Ox(GRN));
+		}
+
+		return linePoints;
+	}
+
+	static double MonteCarlo_V1(double(*f)(double), double a, double b, unsigned int N) {
+		auto [f_min, f_max] = fMinfMax(f, a, b, N);
+		std::vector<point> squarePoints = uniformRandomOnSquare({ a, f_min }, { b, f_max }, N);
+		return ratioIn(f, squarePoints) * (b - a) * (f_max - f_min) + f_min * (b - a);
+	}
+
 	static double MonteCarlo_V1(double(*f)(double), double a, double b, std::vector<point> squarePoints) {
-		double f_max;
-		f_max = fMinfMax(f, a, b, squarePoints.size()).y;
-		return ratioIn(f, squarePoints) * (b - a) * (f_max);
+		auto [f_min, f_max] = fMinfMax(f, a, b, squarePoints.size());
+		return ratioIn(f, squarePoints) * (b - a) * (f_max - f_min) + f_min * (b - a);
+	}
+
+	static double MonteCarlo_V2(double(*f)(double), double a, double b, unsigned int N) {
+		double totalValue = 0;
+
+		std::vector<double> linePoints = uniformRandomOnLine(a, b, N);
+
+		for (auto point : linePoints) {
+			totalValue += f(point);
+		}
+		return (b - a) * totalValue / N;
+	}
+
+	static double MonteCarlo_V2(double(*f)(double), std::vector<double> linePoints) {
+		double totalValue = 0;
+
+		double minX = linePoints[0];
+		double maxX = linePoints[0];
+
+		for (auto point : linePoints) {
+			totalValue += f(point);
+			minX = point * (point < minX) + minX * (!(point < minX));
+			maxX = point * (point > maxX) + maxX * (!(point > maxX));
+		}
+		return (maxX - minX) * totalValue / linePoints.size();
 	}
 };
 
