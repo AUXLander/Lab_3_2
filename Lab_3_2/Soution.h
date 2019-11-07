@@ -560,46 +560,71 @@ namespace Lab32 {
 		mainChart->ChartAreas[0]->AxisY->Minimum = MinMax.x;
 		mainChart->ChartAreas[0]->AxisY->Maximum = MinMax.y;
 
-		std::vector<point> uniformSquare = Integral::uniformRandomOnSquare({ a, MinMax.x }, { b, MinMax.y }, N);
-		std::vector<point> squareStairs = Integral::squareStairs(f, a, b, N);
-
-		std::vector<double> uniformLine = Integral::uniformRandomOnLine(a, b, N);
-
-		double ratio_v1 = Integral::ratioIn(f, uniformSquare);
-		double result_v1 = Integral::MonteCarlo_V1(f, a, b, uniformSquare);
-		double result_v2 = Integral::MonteCarlo_V2(f, uniformLine);
-		double result_NM = Integral::Numeric(f, a, b, N);
-		double result_EX = F(b) - F(a);
-
-		labelRatioV1->Text = String::Concat("RatioIn: ", Convert::ToString(ratio_v1));
-		labelResultV1->Text = String::Concat("Result:  ", Convert::ToString(result_v1));
-		labelResultV2->Text = String::Concat("Result:  ", Convert::ToString(result_v2));
-		labelResultNM->Text = String::Concat("Result:  ", Convert::ToString(result_NM));
-		labelResultEX->Text = String::Concat("Result:  ", Convert::ToString(result_EX));
-
 		bool boolNM = Convert::ToBoolean(checkNM->Checked);
 		bool boolMK1 = Convert::ToBoolean(checkMK1->Checked);
 		bool boolMK2 = Convert::ToBoolean(checkMK2->Checked);
 
-		double x = 0;
+		std::vector<point> uniformSquare;
+		std::vector<double> uniformLine;
+		std::vector<point> squareStairs;
+
+		if (boolNM) {
+			squareStairs = Integral::squareStairs(f, a, b, N);
+			double result_NM = Integral::Numeric(f, a, b, N);
+			labelResultNM->Text = String::Concat("Result:  ", Convert::ToString(result_NM));
+		}
+		else {
+			labelResultNM->Text = "Result:  -";
+		}
+
+		if (boolMK1) {
+			uniformSquare = Integral::uniformRandomOnSquare({ a, MinMax.x }, { b, MinMax.y }, N);
+			double ratio_v1 = Integral::ratioIn(f, uniformSquare);
+			double result_v1 = Integral::MonteCarlo_V1(f, a, b, uniformSquare);
+			labelRatioV1->Text = String::Concat("RatioIn: ", Convert::ToString(ratio_v1));
+			labelResultV1->Text = String::Concat("Result:  ", Convert::ToString(result_v1));
+		}
+		else {
+			labelRatioV1->Text = "RatioIn: -";
+			labelResultV1->Text = "Result:  -";
+		}
+
+		if (boolMK2) {
+			uniformLine = Integral::uniformRandomOnLine(a, b, N);
+			double result_v2 = Integral::MonteCarlo_V2(f, uniformLine);
+			labelResultV2->Text = String::Concat("Result:  ", Convert::ToString(result_v2));
+		}
+		else {
+			labelResultV2->Text = "Result:  -";
+		}
+
+		double result_EX = F(b) - F(a);
+
+		labelResultEX->Text = String::Concat("Result:  ", Convert::ToString(result_EX));
+
+		double x;
 		double step = (b - a) / (double)N;
-
-		stairs->Points->AddXY(squareStairs[0].x, 0);
-		for (unsigned int i = 0; i < N; i++) {
-			if (boolMK1) {
-				unif_v1->Points->AddXY(uniformSquare[i].x, uniformSquare[i].y);
-			}
-			
-			if (boolMK2) {
-				unif_v2->Points->AddXY(uniformLine[i], 0.01);
-			}
-
-			if (boolNM) {
+		if (boolNM) {
+			stairs->Points->AddXY(squareStairs[0].x, 0);
+			for (unsigned int i = 0; i < N; i++) {
 				stairs->Points->AddXY(squareStairs[i].x, squareStairs[i].y);
 				stairs->Points->AddXY(squareStairs[i].x, squareStairs[i + 1].y);
 			}
-
-			x += step;
+			stairs->Points->AddXY(squareStairs[squareStairs.size() - 2].x, 0);
+		}
+		if (boolMK1) {
+			x = 0;
+			for (unsigned int i = 0; i < N; i++) {
+				unif_v1->Points->AddXY(uniformSquare[i].x, uniformSquare[i].y);
+				x += step;
+			}
+		}
+		if (boolMK1) {
+			x = 0;
+			for (unsigned int i = 0; i < N; i++) {
+				unif_v2->Points->AddXY(uniformLine[i], 0.01);
+				x += step;
+			}
 		}
 
 		x = 0;
@@ -610,9 +635,6 @@ namespace Lab32 {
 			x += step;
 		}
 
-		stairs->Points->AddXY(squareStairs[squareStairs.size() - 2].x, 0);
-
-
 		DGV->Rows->Clear();
 
 		for (unsigned int vN = 100, index = 0; vN <= 100000; vN *= 10) {
@@ -620,7 +642,7 @@ namespace Lab32 {
 
 			DGV->Rows[index]->Cells[0]->Value = vN;
 			DGV->Rows[index]->Cells[1]->Value = Integral::Numeric(f, a, b, vN);			//nm
-			DGV->Rows[index]->Cells[2]->Value = Integral::MonteCarlo_V1(f,a,b,vN);		//mk1
+			DGV->Rows[index]->Cells[2]->Value = Integral::MonteCarlo_V1(f, a, b, vN);		//mk1
 			DGV->Rows[index]->Cells[3]->Value = Integral::MonteCarlo_V2(f, a, b, vN);	//mk2
 
 			index++;
@@ -629,7 +651,7 @@ namespace Lab32 {
 	}
 	private: System::Void Soution_Load(System::Object^ sender, System::EventArgs^ e) {
 
-		
+
 
 
 	}
