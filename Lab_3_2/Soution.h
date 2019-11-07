@@ -606,7 +606,7 @@ namespace Lab32 {
 		N = std::max(N, (unsigned int)1000);
 		step = (b - a) / (double)N;
 		for (unsigned int i = 0; i < N; i++) {
-			graph->Points->AddXY(x, f(x));
+			graph->Points->AddXY(a + x, f(a + x));
 			x += step;
 		}
 
