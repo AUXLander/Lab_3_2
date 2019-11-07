@@ -10,12 +10,22 @@ struct point {
 };
 
 class Integral {
-	static unsigned int getTick(void) {
+	static unsigned int getSeed(void) {
 		_asm rdtsc
 	}
 public:
 	static double min;
 	static double max;
+
+	static std::vector<point> squareStairs(double(*f)(double), double a, double b, unsigned int N) {
+		std::vector<point> stairs;
+		double step_h = (b - a) / (double)N;
+		for (double x = a; x < b; x += step_h) {
+			stairs.push_back({ x, std::max(f(x), 0.0) });
+		}
+		stairs.push_back({ b, std::max(f(b), 0.0) });
+		return stairs;
+	}
 
 	static double Numeric(double(*f)(double), double a, double b, unsigned int N = 1000) {
 		double square = 0;
@@ -51,7 +61,7 @@ public:
 		std::vector<point> squarePoints;
 
 		std::mt19937 GRN;
-		GRN.seed(getTick());
+		GRN.seed(getSeed());
 		std::uniform_real_distribution<> urd_Ox(x0y0.x, x1y1.x);
 		std::uniform_real_distribution<> urd_Oy(x0y0.y, x1y1.y);
 
@@ -84,7 +94,7 @@ public:
 
 		std::vector<double> linePoints;
 
-		GRN.seed(getTick());
+		GRN.seed(getSeed());
 
 		for (unsigned int i = 0; i < N; i++) {
 			linePoints.push_back(urd_Ox(GRN));
@@ -96,12 +106,12 @@ public:
 	static double MonteCarlo_V1(double(*f)(double), double a, double b, unsigned int N) {
 		auto [f_min, f_max] = fMinfMax(f, a, b, N);
 		std::vector<point> squarePoints = uniformRandomOnSquare({ a, f_min }, { b, f_max }, N);
-		return ratioIn(f, squarePoints) * (b - a) * (f_max - f_min) + f_min * (b - a);
+		return (b - a) * (ratioIn(f, squarePoints) * (f_max - f_min) + f_min);
 	}
 
 	static double MonteCarlo_V1(double(*f)(double), double a, double b, std::vector<point> squarePoints) {
 		auto [f_min, f_max] = fMinfMax(f, a, b, squarePoints.size());
-		return ratioIn(f, squarePoints) * (b - a) * (f_max - f_min) + f_min * (b - a);
+		return (b - a) * (ratioIn(f, squarePoints) * (f_max - f_min) + f_min);
 	}
 
 	static double MonteCarlo_V2(double(*f)(double), double a, double b, unsigned int N) {
