@@ -5,11 +5,9 @@
 #include <math.h>
 #include <algorithm>
 
-double f(double x) {
+inline double f(const double x) noexcept
+{
 	return 2 * cos(2 * x) + 2;
-}
-double F(double x) {
-	return sin(2 * x) + 2 * x;
 }
 /*
 
@@ -28,23 +26,30 @@ int main(cli::array<String^>^ arg) {
 }
 */
 
-constexpr size_t N = 1'000'000;
+using value_type = double;
+using integral = integral_t<value_type>;
+
+constexpr size_t N = 100'000'000;
+//constexpr size_t N = 1'000'000;
+
+constexpr value_type a = 0.0;
+constexpr value_type b = 1.0;
+
+
 
 int main() 
 {
-	std::vector<point> squareStairs = Integral::squareStairs(f, 0.0, 1.0, N);
-	double result_NM = Integral::Numeric(f, 0.0, 1.0, N);
+	std::vector<integral::point3f> points;
 
-	std::vector<point> uniformSquare = Integral::uniformRandomOnSquare({ 0.0, 1.0 }, { 1.0, 4.0 }, N);
-	double ratio_v1 = Integral::ratioIn(f, uniformSquare);
-	double result_v1 = Integral::MonteCarlo_V1(f, 0.0, 1.0, uniformSquare);
-	
-	std::vector<double> uniformLine = Integral::uniformRandomOnLine(0.0, 1.0, N);
-	double result_v2 = Integral::MonteCarlo_V2(f, uniformLine);
+	integral::generate_points(points, f, { a, 1.0 }, { b, 4.0 }, N);
+
+	const auto result_NM = integral::Numeric(points, a, b);
+	const auto result_v1 = integral::MonteCarlo_V1(points, a, b);
+	const auto result_v2 = integral::MonteCarlo_V2(points, a, b);
 	
 	std::cout << result_NM << std::endl;
 	std::cout << result_v1 << std::endl;
 	std::cout << result_v2 << std::endl;
 
-	return 0;
+	return system("pause");
 }

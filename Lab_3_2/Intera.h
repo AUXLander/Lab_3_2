@@ -2,141 +2,161 @@
 #include <algorithm>
 #include <random>
 #include <vector>
+#include <tuple>
+#include <time.h>
 
+template<typename T>
+using point_t = std::pair<T, T>;
 
-struct point {
-	double x;
-	double y;
+template<typename T>
+struct custom_point_t
+{
+	T x;
+	T ry;
+	T fy;
+
+	custom_point_t() = default;
+
+	custom_point_t(const T& x, const T& ry, const T& fy)
+		: x(x), ry(ry), fy(fy)
+	{;}
 };
 
-class Integral {
-	static unsigned int getSeed(void) {
-		_asm rdtsc
+template <typename T>
+class integral_t
+{
+	static unsigned int getSeed(void) 
+	{
+		return time(NULL);
 	}
 public:
+	using Point = point_t<T>;
+	using point3f = custom_point_t<T>;
+
 	static double min;
 	static double max;
 
-	static std::vector<point> squareStairs(double(*f)(double), double a, double b, unsigned int N) {
-		std::vector<point> stairs;
-		double step_h = (b - a) / (double)N;
-		for (double x = a; x < b; x += step_h) {
-			stairs.push_back({ x, std::max(f(x), 0.0) });
+	static void generate_points(std::vector<point3f>& points, T(*f)(const T), const Point x0y0, const Point x1y1, const size_t N)
+	{
+		const auto [x0, y0] = x0y0;
+		const auto [x1, y1] = x1y1;
+
+		std::mt19937_64 GRN(std::random_device{}());
+		std::uniform_real_distribution<> urd_Ox(x0, x1);
+		std::uniform_real_distribution<> urd_Oy(y0, y1);
+
+		points.resize(N);
+
+		auto* p_data = points.data();
+
+		T x;
+
+		for (size_t index = 0; index < N; ++index)
+		{
+			x = urd_Ox(GRN);
+
+			new (p_data + index) point3f(x, urd_Oy(GRN), f(x));
 		}
-		stairs.push_back({ b, std::max(f(b), 0.0) });
-		return stairs;
 	}
 
-	static double Numeric(double(*f)(double), double a, double b, unsigned int N = 1000) {
-		double square = 0;
-		double step_h = (b - a) / (double)N;
-		for (double x = a; x < b; x += step_h) {
-			square += std::max(f(x), 0.0);
-		}
-		return step_h * square;
-	}
+	static T Numeric(const std::vector<point3f>& points, const T a, const T b) noexcept
+	{
+		T square = 0.0;
 
-	static point fMinfMax(double(*f)(double), double a, double b, unsigned int N) {
-		double f_val;
-		double f_min;
-		double f_max;
-		double f_step;
-
-
-		f_min = f(a);
-		f_max = f_min;
-		f_step = (b - a) / (double)N;
-
-		for (double x = a; x < b; x += f_step) {
-			f_val = f(x);
-			if (f_val > f_max) { f_max = f_val; }
-			if (f_val < f_min) { f_min = f_val; }
+		for (const auto& point : points)
+		{
+			square += std::max(point.fy, 0.0);
 		}
 
-		return { f_min, f_max };
+		return static_cast<T>(b - a) * square / static_cast<T>(points.size());
 	}
 
-	static std::vector<point> uniformRandomOnSquare(point x0y0, point x1y1, unsigned int N) {
+	static std::pair<T,T> fMinfMaxY(const std::vector<point3f>& points)
+	{
+		const auto y = points[0].fy;
 
-		std::vector<point> squarePoints;
+		union
+		{
+			T storage[3]; // fy min max
 
-		std::mt19937 GRN;
-		GRN.seed(getSeed());
-		std::uniform_real_distribution<> urd_Ox(x0y0.x, x1y1.x);
-		std::uniform_real_distribution<> urd_Oy(x0y0.y, x1y1.y);
+			struct
+			{
+				T val; // 0
+				T min; // 1
+				T max; // 2
+			};
+		};
 
-		for (unsigned int i = 0; i < N; i++) {
-			squarePoints.push_back({
-				urd_Ox(GRN),
-				urd_Oy(GRN)
-				});
+		min = y;
+		max = y;
+
+		for (const auto& point : points)
+		{
+			storage[(static_cast<size_t>(point.fy < min) << 0U) | (static_cast<size_t>(point.fy > max) << 1U)] = point.fy;
 		}
 
-		return squarePoints;
+		return std::make_pair(min, max);
 	}
 
-	static double ratioIn(double(*f)(double), std::vector<point> squarePoints) {
-		unsigned int countIn = 0;
-		unsigned int length = squarePoints.size();
+	static std::pair<T, T> fMinfMaxX(const std::vector<point3f>& points)
+	{
+		const auto x = points[0].x;
 
-		for (unsigned int i = 0; i < length; i++) {
-			if (squarePoints[i].y <= f(squarePoints[i].x)) {
-				countIn += 1;
-			}
+		union
+		{
+			T storage[3]; // x min max
+
+			struct
+			{
+				T val; // 0
+				T min; // 1
+				T max; // 2
+			};
+		};
+
+		min = x;
+		max = x;
+
+		for (const auto& point : points)
+		{
+			storage[(static_cast<size_t>(point.x < min) << 0U) | (static_cast<size_t>(point.x > max) << 1U)] = point.x;
 		}
 
-		return ((double)countIn / (double)length);
+		return std::make_pair(min, max);
 	}
 
-	static std::vector<double> uniformRandomOnLine(double a, double b, unsigned int N) {
-		std::mt19937 GRN;
-		std::uniform_real_distribution<> urd_Ox(a, b);
+	static T ratioIn(const std::vector<point3f>& points)
+	{
+		size_t __entry_counts = 0;
 
-		std::vector<double> linePoints;
-
-		GRN.seed(getSeed());
-
-		for (unsigned int i = 0; i < N; i++) {
-			linePoints.push_back(urd_Ox(GRN));
+		for (const auto& point : points)
+		{
+			__entry_counts += static_cast<size_t>(point.ry <= point.fy);
 		}
 
-		return linePoints;
+		return static_cast<T>(__entry_counts) / static_cast<T>(points.size());
 	}
 
-	static double MonteCarlo_V1(double(*f)(double), double a, double b, unsigned int N) {
-		auto [f_min, f_max] = fMinfMax(f, a, b, N);
-		std::vector<point> squarePoints = uniformRandomOnSquare({ a, f_min }, { b, f_max }, N);
-		return (b - a) * (ratioIn(f, squarePoints) * (f_max - f_min) + f_min);
+	static T MonteCarlo_V1(const std::vector<point3f>& points, const T a, const T b)
+	{
+		const auto [min, max] = fMinfMaxY(points);
+		const auto ratio = ratioIn(points);
+
+		return (b - a) * (ratio * (max - min) + min);
 	}
 
-	static double MonteCarlo_V1(double(*f)(double), double a, double b, std::vector<point> squarePoints) {
-		auto [f_min, f_max] = fMinfMax(f, a, b, squarePoints.size());
-		return (b - a) * (ratioIn(f, squarePoints) * (f_max - f_min) + f_min);
-	}
+	static T MonteCarlo_V2(const std::vector<point3f>& points, const T a, const T b)
+	{
+		const auto [min, max] = fMinfMaxX(points);
 
-	static double MonteCarlo_V2(double(*f)(double), double a, double b, unsigned int N) {
-		double totalValue = 0;
+		T summ = 0;
 
-		std::vector<double> linePoints = uniformRandomOnLine(a, b, N);
-
-		for (auto point : linePoints) {
-			totalValue += f(point);
+		for (const auto& point : points)
+		{
+			summ += point.fy;
 		}
-		return (b - a) * totalValue / N;
-	}
 
-	static double MonteCarlo_V2(double(*f)(double), std::vector<double> linePoints) {
-		double totalValue = 0;
-
-		double minX = linePoints[0];
-		double maxX = linePoints[0];
-
-		for (auto point : linePoints) {
-			totalValue += f(point);
-			minX = point * (point < minX) + minX * (!(point < minX));
-			maxX = point * (point > maxX) + maxX * (!(point > maxX));
-		}
-		return (maxX - minX) * totalValue / linePoints.size();
+		return (max - min) * summ / static_cast<T>(points.size());
 	}
 };
 
