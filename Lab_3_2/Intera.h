@@ -6,6 +6,7 @@
 #include <time.h>
 #include <omp.h>
 //#include <immintrin.h>
+#include <array>
 
 template<typename T>
 using point_t = std::pair<T, T>;
@@ -25,22 +26,22 @@ struct custom_point_t
 };
 
 template <typename T>
-struct metrics_t
+struct alignas(8) metrics_t
 {
-	T summ_fy;
-	T summ_max_fy;
-
-	size_t entry_counts;
-
 	T xmin;
 	T xmax;
 
 	T ymin;
 	T ymax;
+
+	T summ_fy;
+	T summ_max_fy;
+
+	uint64_t entry_counts;
 };
 
 template <typename T>
-union data_split
+union data_split_3
 {
 	T storage[3];
 
@@ -51,6 +52,19 @@ union data_split
 		T max;
 	};
 };
+
+template <typename T>
+union data_split_2
+{
+	T storage[2];
+
+	struct
+	{
+		T def;
+		T value;
+	};
+};
+
 
 template <typename T>
 class integral_t
@@ -76,12 +90,10 @@ public:
 		std::uniform_real_distribution<> urd_Ox(x0, x1);
 		std::uniform_real_distribution<> urd_Oy(y0, y1);
 
-		constexpr T inc_rand_max = 1.0 / static_cast<T>(UINT32_MAX);
-
 		constexpr int iN = 16; // omp_get_num_threads()
 		const int jN = N / iN;
 
-		std::vector<metrics> thread_storage(iN);
+		std::array<metrics, iN> thread_storage;
 
 #pragma omp parallel
 		{
@@ -103,24 +115,28 @@ public:
 
 				data.entry_counts = 0;
 
-				data_split<T> x = { 0,0,0 };
-				data_split<T> y = { 0,0,0 };
+				data_split_2<T> ymax = { 0,0 };
+				data_split_3<T> x = { 0,0,0 };
+				data_split_3<T> y = { 0,0,0 };
 
 				T rx, ry, fy;
 
+				#pragma omp simd
 				for (int j = 0; j < jN; ++j)
 				{
 					rx = urd_Ox(GRN);
 					ry = urd_Oy(GRN);
 					fy = f(rx);
 
-					data.summ_fy += fy;
-					data.summ_max_fy += std::max(fy, 0.0);
-
-					data.entry_counts += static_cast<size_t>(ry <= fy);
-
 					x.storage[(static_cast<size_t>(rx < x.min) << 0U) | (static_cast<size_t>(rx > x.max) << 1U)] = rx;
 					y.storage[(static_cast<size_t>(fy < y.min) << 0U) | (static_cast<size_t>(fy > y.max) << 1U)] = fy;
+
+					ymax.storage[static_cast<size_t>(fy > 0.0)] = fy;
+
+					data.summ_fy += fy;
+					data.summ_max_fy += ymax.value;
+
+					data.entry_counts += static_cast<size_t>(ry <= fy);
 				}
 
 				data.xmax = x.max;
@@ -133,18 +149,30 @@ public:
 
 		metrics& data = thread_storage[0];
 
+		data_split_2<T> xmax = { 0,0 };
+		data_split_2<T> xmin = { 0,0 };
+		data_split_2<T> ymax = { 0,0 };
+		data_split_2<T> ymin = { 0,0 };
+
+		#pragma omp simd
 		for (int i = 1; i < iN; ++i)
 		{
-			data.xmax += thread_storage[i].xmax;
-			data.xmin += thread_storage[i].xmin;
-			data.ymax += thread_storage[i].ymax;
-			data.ymin += thread_storage[i].ymin;
+			xmax.storage[static_cast<size_t>(thread_storage[i].xmax > xmax.value)] = thread_storage[i].xmax;
+			xmin.storage[static_cast<size_t>(thread_storage[i].xmin < xmin.value)] = thread_storage[i].xmin;
+
+			ymax.storage[static_cast<size_t>(thread_storage[i].ymax > ymax.value)] = thread_storage[i].ymax;
+			ymin.storage[static_cast<size_t>(thread_storage[i].ymin < ymin.value)] = thread_storage[i].ymin;
 
 			data.summ_fy += thread_storage[i].summ_fy;
 			data.summ_max_fy += thread_storage[i].summ_max_fy;
 
 			data.entry_counts += thread_storage[i].entry_counts;
 		}
+
+		data.xmax = xmax.value;
+		data.xmin = xmin.value;
+		data.ymax = ymax.value;
+		data.ymin = ymin.value;
 
 		return data;
 	}
@@ -285,7 +313,7 @@ public:
 
 	static T MonteCarlo_V2(const T a, const T b, const T xmin, const T xmax, const T summ, const size_t N)
 	{
-		return (xmin - xmin) * summ / static_cast<T>(N);
+		return (xmax - xmin) * summ / static_cast<T>(N);
 	}
 
 	static T MonteCarlo_V2(const std::vector<point3f>& points, const T a, const T b)
