@@ -5,10 +5,7 @@
 #include <math.h>
 #include <algorithm>
 
-inline double f(const double x) noexcept
-{
-	return 2 * cos(2 * x) + 2;
-}
+
 /*
 
 using namespace System;
@@ -29,13 +26,16 @@ int main(cli::array<String^>^ arg) {
 using value_type = double;
 using integral = integral_t<value_type>;
 
+//constexpr size_t N = 100'000'000;
 constexpr size_t N = 100'000'000;
-//constexpr size_t N = 1'000'000;
 
 constexpr value_type a = 0.0;
 constexpr value_type b = 1.0;
 
-
+inline value_type f(const value_type rx) noexcept
+{
+	return 2 * std::cos(2 * rx) + 2.0;
+}
 
 int main() 
 {
@@ -51,5 +51,6 @@ int main()
 	std::cout << result_v1 << std::endl;
 	std::cout << result_v2 << std::endl;
 
-	return system("pause");
+	return 0;
+	//return system("pause");
 }
