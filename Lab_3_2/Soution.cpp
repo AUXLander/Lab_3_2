@@ -4,7 +4,7 @@
 #include "Intera.h"
 #include <math.h>
 #include <algorithm>
-
+ #include <immintrin.h>
 
 /*
 
@@ -26,7 +26,6 @@ int main(cli::array<String^>^ arg) {
 using value_type = double;
 using integral = integral_t<value_type>;
 
-//constexpr size_t N = 100'000'000;
 constexpr size_t N = 100'000'000;
 
 constexpr value_type a = 0.0;
@@ -34,7 +33,7 @@ constexpr value_type b = 1.0;
 
 inline value_type f(const value_type rx) noexcept
 {
-	return 2 * std::cos(2 * rx) + 2.0;
+	return 2.0 * std::cos(2.0 * rx) + 2.0;
 }
 
 int main() 
