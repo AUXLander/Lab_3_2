@@ -39,13 +39,14 @@ inline value_type f(const value_type rx) noexcept
 
 int main() 
 {
-	std::vector<integral::point3f> points;
+	const auto data = integral::generate_metrics(f, { a, 1.0 }, { b, 4.0 }, N);
 
-	integral::generate_points(points, f, { a, 1.0 }, { b, 4.0 }, N);
+	const auto result_NM = integral::Numeric(data.summ_max_fy, a, b, N);
 
-	const auto result_NM = integral::Numeric(points, a, b);
-	const auto result_v1 = integral::MonteCarlo_V1(points, a, b);
-	const auto result_v2 = integral::MonteCarlo_V2(points, a, b);
+	const auto ratio = static_cast<value_type>(data.entry_counts) / static_cast<value_type>(N);
+
+	const auto result_v1 = integral::MonteCarlo_V1(a, b, data.ymin, data.ymax, ratio);
+	const auto result_v2 = integral::MonteCarlo_V2(a, b, data.xmin, data.xmax, data.summ_fy, N);
 	
 	std::cout << result_NM << std::endl;
 	std::cout << result_v1 << std::endl;

@@ -67,6 +67,88 @@ public:
 	static double min;
 	static double max;
 
+	static metrics generate_metrics(T(*f)(const T), const Point x0y0, const Point x1y1, const size_t N)
+	{
+		const auto [x0, y0] = x0y0;
+		const auto [x1, y1] = x1y1;
+
+		std::mt19937_64 GRN(std::random_device{}());
+		std::uniform_real_distribution<> urd_Ox(x0, x1);
+		std::uniform_real_distribution<> urd_Oy(y0, y1);
+
+		constexpr T inc_rand_max = 1.0 / static_cast<T>(UINT32_MAX);
+
+		constexpr int iN = 16; // omp_get_num_threads()
+		const int jN = N / iN;
+
+		std::vector<metrics> thread_storage(iN);
+
+#pragma omp parallel
+		{
+#pragma omp for
+			for (int i = 0; i < iN; ++i)
+			{
+				const auto thidx = omp_get_thread_num();
+
+				metrics& data = thread_storage[thidx];
+
+				data.summ_fy = 0.0;
+				data.summ_max_fy = 0.0;
+
+				data.xmax = (x1 - x1) * 0.5;
+				data.xmin = (x1 - x1) * 0.5;
+
+				data.ymax = (y1 - y1) * 0.5;
+				data.ymin = (y1 - y1) * 0.5;
+
+				data.entry_counts = 0;
+
+				data_split<T> x = { 0,0,0 };
+				data_split<T> y = { 0,0,0 };
+
+				T rx, ry, fy;
+
+				for (int j = 0; j < jN; ++j)
+				{
+					rx = urd_Ox(GRN);
+					ry = urd_Oy(GRN);
+					fy = f(rx);
+
+					data.summ_fy += fy;
+					data.summ_max_fy += std::max(fy, 0.0);
+
+					data.entry_counts += static_cast<size_t>(ry <= fy);
+
+					x.storage[(static_cast<size_t>(rx < x.min) << 0U) | (static_cast<size_t>(rx > x.max) << 1U)] = rx;
+					y.storage[(static_cast<size_t>(fy < y.min) << 0U) | (static_cast<size_t>(fy > y.max) << 1U)] = fy;
+				}
+
+				data.xmax = x.max;
+				data.xmin = x.min;
+
+				data.ymax = y.max;
+				data.ymin = y.min;
+			}
+		}
+
+		metrics& data = thread_storage[0];
+
+		for (int i = 1; i < iN; ++i)
+		{
+			data.xmax += thread_storage[i].xmax;
+			data.xmin += thread_storage[i].xmin;
+			data.ymax += thread_storage[i].ymax;
+			data.ymin += thread_storage[i].ymin;
+
+			data.summ_fy += thread_storage[i].summ_fy;
+			data.summ_max_fy += thread_storage[i].summ_max_fy;
+
+			data.entry_counts += thread_storage[i].entry_counts;
+		}
+
+		return data;
+	}
+
 	static int generate_points(std::vector<point3f>& points, T(*f)(const T), const Point x0y0, const Point x1y1, const size_t N)
 	{
 		const auto [x0, y0] = x0y0;
