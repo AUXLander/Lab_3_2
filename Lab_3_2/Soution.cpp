@@ -14,6 +14,11 @@ inline __m256d f(const __m256d rx) noexcept
 	return _mm256_add_pd(_mm256_mul_pd(_mm256_cos_pd(_mm256_mul_pd(rx, dbl)), dbl), dbl);
 }
 
+inline value_type f(const value_type x) noexcept
+{
+	return 2.0 * std::cos(2.0 * x) + 2.0;
+}
+
 int main() 
 {
 	constexpr size_t N = 100'000'000;

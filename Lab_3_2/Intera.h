@@ -51,6 +51,13 @@ union data_split_3
 		T min;
 		T max;
 	};
+
+	inline T& extremum(const T& value) noexcept
+	{
+		const size_t hash = (static_cast<size_t>(value < min) << 0U) |
+			(static_cast<size_t>(value > max) << 1U);
+		return storage[hash] = value;
+	}
 };
 
 template <typename T>
@@ -63,22 +70,56 @@ union data_split_2
 		T def;
 		T value;
 	};
+
+	inline T& max(const T& v) noexcept
+	{
+		return storage[static_cast<size_t>(v > value)] = v;
+	}
+
+	inline T& min(const T& v) noexcept
+	{
+		return storage[static_cast<size_t>(v < value)] = v;
+	}
 };
 
-inline double hsum_double_avx(__m256d v) {
+// Сумма компонент, горизонтальная сумма
+inline double hsum(const __m256d& v)
+{
+	// берем младшие 128 бит
 	__m128d vlow = _mm256_castpd256_pd128(v);
-	__m128d vhigh = _mm256_extractf128_pd(v, 1); // high 128
-	vlow = _mm_add_pd(vlow, vhigh);     // reduce down to 128
+	// берем старшие 128 бит
+	__m128d vhigh = _mm256_extractf128_pd(v, 1);
+
+	// получаем две пары сумм
+	vlow = _mm_add_pd(vlow, vhigh);
 
 	__m128d high64 = _mm_unpackhi_pd(vlow, vlow);
-	return  _mm_cvtsd_f64(_mm_add_sd(vlow, high64));  // reduce to scalar
+
+	// складываем еще две пары
+	return _mm_cvtsd_f64(_mm_add_sd(vlow, high64));
+}
+
+// Максимум компонент, горизонтальный максимум
+inline double hmax(const __m256d& x)
+{
+	// переставляем пары компонент
+	__m256d y = _mm256_permute2f128_pd(x, x, 1);
+	// берем максимум в каждой паре
+	__m256d m1 = _mm256_max_pd(x, y);
+
+	// переставляем пары компонент
+	__m256d m2 = _mm256_permute_pd(m1, 5);
+	// берем максимум в каждой паре
+	__m256d m = _mm256_max_pd(m1, m2);
+
+	return m.m256d_f64[0];
 }
 
 
 template <typename T>
 class integral_t
 {
-	static unsigned int getSeed(void) 
+	static unsigned int getSeed(void)
 	{
 		return time(NULL);
 	}
@@ -132,35 +173,28 @@ public:
 				__m256d rx;
 				__m256d ry;
 				__m256d fy;
-				
-				constexpr __m256d dbl = { (2.0) , (2.0) , (2.0) , (2.0) };
+
+				constexpr __m256d dbl = { 2.0 , 2.0 , 2.0 , 2.0 };
+				constexpr __m256d zero = { 0.0 , 0.0 , 0.0 , 0.0 };
 
 				for (int j = 0; j < jN_4; ++j)
 				{
+					// Укладываем сгенерированные значения в 256 битные регистры
 					rx = _mm256_set_pd(urd_Ox(GRN), urd_Ox(GRN), urd_Ox(GRN), urd_Ox(GRN));
 					ry = _mm256_set_pd(urd_Oy(GRN), urd_Oy(GRN), urd_Oy(GRN), urd_Oy(GRN));
 
 					fy = f(rx);
 
-					x.storage[(static_cast<size_t>(rx.m256d_f64[0] < x.min) << 0U) | (static_cast<size_t>(rx.m256d_f64[0] > x.max) << 1U)] = rx.m256d_f64[0];
-					y.storage[(static_cast<size_t>(fy.m256d_f64[0] < y.min) << 0U) | (static_cast<size_t>(fy.m256d_f64[0] > y.max) << 1U)] = fy.m256d_f64[0];
+					x.extremum(hmax(rx));
+					y.extremum(hmax(fy));
 
-					x.storage[(static_cast<size_t>(rx.m256d_f64[1] < x.min) << 0U) | (static_cast<size_t>(rx.m256d_f64[1] > x.max) << 1U)] = rx.m256d_f64[1];
-					y.storage[(static_cast<size_t>(fy.m256d_f64[1] < y.min) << 0U) | (static_cast<size_t>(fy.m256d_f64[1] > y.max) << 1U)] = fy.m256d_f64[1];
+					// горизонтальная сумма
+					data.summ_fy += hsum(fy);
 
-					x.storage[(static_cast<size_t>(rx.m256d_f64[2] < x.min) << 0U) | (static_cast<size_t>(rx.m256d_f64[2] > x.max) << 1U)] = rx.m256d_f64[2];
-					y.storage[(static_cast<size_t>(fy.m256d_f64[2] < y.min) << 0U) | (static_cast<size_t>(fy.m256d_f64[2] > y.max) << 1U)] = fy.m256d_f64[2];
+					// сумма отличных от нуля компонент
+					data.summ_max_fy += hsum(_mm256_max_pd(zero, fy));
 
-					x.storage[(static_cast<size_t>(rx.m256d_f64[3] < x.min) << 0U) | (static_cast<size_t>(rx.m256d_f64[3] > x.max) << 1U)] = rx.m256d_f64[3];
-					y.storage[(static_cast<size_t>(fy.m256d_f64[3] < y.min) << 0U) | (static_cast<size_t>(fy.m256d_f64[3] > y.max) << 1U)] = fy.m256d_f64[3];
-
-					data.summ_fy += hsum_double_avx(fy);
-
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[0] > 0.0)] = fy.m256d_f64[0]; data.summ_max_fy += ymax.value;
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[1] > 0.0)] = fy.m256d_f64[1]; data.summ_max_fy += ymax.value;
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[2] > 0.0)] = fy.m256d_f64[2]; data.summ_max_fy += ymax.value;
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[3] > 0.0)] = fy.m256d_f64[3]; data.summ_max_fy += ymax.value;
-
+					// Проводим сравнение
 					auto notshifted = _mm256_cvtpd_epi32(_mm256_cmp_pd(ry, fy, _CMP_LE_OS));
 
 					auto fgf1 = _mm_srli_epi32(notshifted, 31);
@@ -188,21 +222,16 @@ public:
 
 		for (size_t i = 1; i < iN; ++i)
 		{
-			xmax.storage[static_cast<size_t>(thread_storage[i].xmax > xmax.value)] = thread_storage[i].xmax;
-			xmin.storage[static_cast<size_t>(thread_storage[i].xmin < xmin.value)] = thread_storage[i].xmin;
+			data.xmax = xmax.max(thread_storage[i].xmax);
+			data.ymax = ymax.max(thread_storage[i].ymax);
 
-			ymax.storage[static_cast<size_t>(thread_storage[i].ymax > ymax.value)] = thread_storage[i].ymax;
-			ymin.storage[static_cast<size_t>(thread_storage[i].ymin < ymin.value)] = thread_storage[i].ymin;
+			data.xmin = xmin.min(thread_storage[i].xmin);
+			data.ymin = ymin.min(thread_storage[i].ymin);
 
-			data.summ_fy = data.summ_fy + thread_storage[i].summ_fy;
-			data.summ_max_fy = data.summ_max_fy + thread_storage[i].summ_max_fy;
-			data.entry_counts = data.entry_counts + thread_storage[i].entry_counts;
+			data.summ_fy += thread_storage[i].summ_fy;
+			data.summ_max_fy += thread_storage[i].summ_max_fy;
+			data.entry_counts += thread_storage[i].entry_counts;
 		}
-
-		data.xmax = xmax.value;
-		data.xmin = xmin.value;
-		data.ymax = ymax.value;
-		data.ymin = ymin.value;
 
 		return data;
 	}
@@ -330,7 +359,7 @@ public:
 
 	inline static T MonteCarlo_V1(const T a, const T b, const T f_ymin, const T f_ymax, const T ratio)
 	{
-		return (b - a) * (ratio * (f_ymax - f_ymin) + f_ymin);
+		return (b - a) * (f_ymax - f_ymin) * ratio + f_ymin;
 	}
 
 	static T MonteCarlo_V1(const std::vector<point3f>& points, const T a, const T b)
