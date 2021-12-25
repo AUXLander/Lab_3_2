@@ -1,0 +1,3 @@
+F:\UserData\Projects\Lab_3_2\Lab_3_2\Debug\Lab_3_2.vcxproj.SuggestedBindingRedirects.cache
+F:\UserData\Projects\Lab_3_2\Lab_3_2\Debug\Lab32.Soution.resources
+F:\UserData\Projects\Lab_3_2\Lab_3_2\Debug\Lab_3_2.vcxproj.GenerateResource.cache

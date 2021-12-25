@@ -26,7 +26,7 @@ struct custom_point_t
 };
 
 template <typename T>
-struct alignas(8) metrics_t
+struct alignas(T) metrics_t
 {
 	T xmin;
 	T xmax;
@@ -37,8 +37,7 @@ struct alignas(8) metrics_t
 	T summ_fy;
 	T summ_max_fy;
 
-	//uint64_t entry_counts;
-	uint32_t entry_counts;
+	uint64_t entry_counts;
 };
 
 template <typename T>
@@ -66,6 +65,15 @@ union data_split_2
 	};
 };
 
+inline double hsum_double_avx(__m256d v) {
+	__m128d vlow = _mm256_castpd256_pd128(v);
+	__m128d vhigh = _mm256_extractf128_pd(v, 1); // high 128
+	vlow = _mm_add_pd(vlow, vhigh);     // reduce down to 128
+
+	__m128d high64 = _mm_unpackhi_pd(vlow, vlow);
+	return  _mm_cvtsd_f64(_mm_add_sd(vlow, high64));  // reduce to scalar
+}
+
 
 template <typename T>
 class integral_t
@@ -82,7 +90,7 @@ public:
 	static double min;
 	static double max;
 
-	static metrics generate_metrics(T(*f)(const T), const Point x0y0, const Point x1y1, const size_t N)
+	static metrics generate_metrics(__m256d(*f)(const __m256d), const Point x0y0, const Point x1y1, const size_t N)
 	{
 		const auto [x0, y0] = x0y0;
 		const auto [x1, y1] = x1y1;
@@ -93,7 +101,7 @@ public:
 
 		constexpr int iN = 16; // omp_get_num_threads()
 		const int jN = static_cast<int>(N) / iN;
-		const int jN_4 = jN / 4U;
+		const int jN_4 = jN >> 2U;
 
 		std::array<metrics, iN> thread_storage;
 
@@ -102,7 +110,7 @@ public:
 #pragma omp for
 			for (int i = 0; i < iN; ++i)
 			{
-				const auto thidx = omp_get_thread_num();
+				const auto thidx = static_cast<size_t>(omp_get_thread_num());
 
 				metrics& data = thread_storage[thidx];
 
@@ -124,23 +132,15 @@ public:
 				__m256d rx;
 				__m256d ry;
 				__m256d fy;
+				
+				constexpr __m256d dbl = { (2.0) , (2.0) , (2.0) , (2.0) };
 
-				constexpr __m256d dbl = { 2.0, 2.0, 2.0 };
-
-				#pragma omp simd
-				for (int j = 0; j < jN_4; j += 4U)
+				for (int j = 0; j < jN_4; ++j)
 				{
-					rx.m256d_f64[0] = urd_Ox(GRN);
-					rx.m256d_f64[1] = urd_Ox(GRN);
-					rx.m256d_f64[2] = urd_Ox(GRN);
-					rx.m256d_f64[3] = urd_Ox(GRN);
+					rx = _mm256_set_pd(urd_Ox(GRN), urd_Ox(GRN), urd_Ox(GRN), urd_Ox(GRN));
+					ry = _mm256_set_pd(urd_Oy(GRN), urd_Oy(GRN), urd_Oy(GRN), urd_Oy(GRN));
 
-					ry.m256d_f64[0] = urd_Oy(GRN);
-					ry.m256d_f64[1] = urd_Oy(GRN);
-					ry.m256d_f64[2] = urd_Oy(GRN);
-					ry.m256d_f64[3] = urd_Oy(GRN);
-
-					fy = _mm256_add_pd(_mm256_mul_pd(_mm256_cos_pd(ry), dbl), dbl);
+					fy = f(rx);
 
 					x.storage[(static_cast<size_t>(rx.m256d_f64[0] < x.min) << 0U) | (static_cast<size_t>(rx.m256d_f64[0] > x.max) << 1U)] = rx.m256d_f64[0];
 					y.storage[(static_cast<size_t>(fy.m256d_f64[0] < y.min) << 0U) | (static_cast<size_t>(fy.m256d_f64[0] > y.max) << 1U)] = fy.m256d_f64[0];
@@ -154,33 +154,21 @@ public:
 					x.storage[(static_cast<size_t>(rx.m256d_f64[3] < x.min) << 0U) | (static_cast<size_t>(rx.m256d_f64[3] > x.max) << 1U)] = rx.m256d_f64[3];
 					y.storage[(static_cast<size_t>(fy.m256d_f64[3] < y.min) << 0U) | (static_cast<size_t>(fy.m256d_f64[3] > y.max) << 1U)] = fy.m256d_f64[3];
 
-					// 0
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[0] > 0.0)] = fy.m256d_f64[0];
+					data.summ_fy += hsum_double_avx(fy);
 
-					data.summ_fy += fy.m256d_f64[0];
-					data.summ_max_fy += ymax.value;
-					data.entry_counts += static_cast<size_t>(ry.m256d_f64[0] <= fy.m256d_f64[0]);
+					ymax.storage[static_cast<size_t>(fy.m256d_f64[0] > 0.0)] = fy.m256d_f64[0]; data.summ_max_fy += ymax.value;
+					ymax.storage[static_cast<size_t>(fy.m256d_f64[1] > 0.0)] = fy.m256d_f64[1]; data.summ_max_fy += ymax.value;
+					ymax.storage[static_cast<size_t>(fy.m256d_f64[2] > 0.0)] = fy.m256d_f64[2]; data.summ_max_fy += ymax.value;
+					ymax.storage[static_cast<size_t>(fy.m256d_f64[3] > 0.0)] = fy.m256d_f64[3]; data.summ_max_fy += ymax.value;
 
-					// 1
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[1] > 0.0)] = fy.m256d_f64[1];
+					auto notshifted = _mm256_cvtpd_epi32(_mm256_cmp_pd(ry, fy, _CMP_LE_OS));
 
-					data.summ_fy += fy.m256d_f64[1];
-					data.summ_max_fy += ymax.value;
-					data.entry_counts += static_cast<size_t>(ry.m256d_f64[1] <= fy.m256d_f64[1]);
+					auto fgf1 = _mm_srli_epi32(notshifted, 31);
 
-					// 2
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[2] > 0.0)] = fy.m256d_f64[2];
+					auto dsa = _mm_hadd_epi32(fgf1, fgf1);
+					auto dsa2 = _mm_hadd_epi32(dsa, dsa);
 
-					data.summ_fy += fy.m256d_f64[2];
-					data.summ_max_fy += ymax.value;
-					data.entry_counts += static_cast<size_t>(ry.m256d_f64[2] <= fy.m256d_f64[2]);
-
-					// 3
-					ymax.storage[static_cast<size_t>(fy.m256d_f64[3] > 0.0)] = fy.m256d_f64[3];
-
-					data.summ_fy += fy.m256d_f64[3];
-					data.summ_max_fy += ymax.value;
-					data.entry_counts += static_cast<size_t>(ry.m256d_f64[3] <= fy.m256d_f64[3]);
+					data.entry_counts += dsa2.m128i_u32[0];
 				}
 
 				data.xmax = x.max;
@@ -198,8 +186,7 @@ public:
 		data_split_2<T> ymax = { 0,0 };
 		data_split_2<T> ymin = { 0,0 };
 
-		#pragma omp simd
-		for (int i = 1; i < iN; ++i)
+		for (size_t i = 1; i < iN; ++i)
 		{
 			xmax.storage[static_cast<size_t>(thread_storage[i].xmax > xmax.value)] = thread_storage[i].xmax;
 			xmin.storage[static_cast<size_t>(thread_storage[i].xmin < xmin.value)] = thread_storage[i].xmin;
@@ -207,10 +194,9 @@ public:
 			ymax.storage[static_cast<size_t>(thread_storage[i].ymax > ymax.value)] = thread_storage[i].ymax;
 			ymin.storage[static_cast<size_t>(thread_storage[i].ymin < ymin.value)] = thread_storage[i].ymin;
 
-			data.summ_fy += thread_storage[i].summ_fy;
-			data.summ_max_fy += thread_storage[i].summ_max_fy;
-
-			data.entry_counts += thread_storage[i].entry_counts;
+			data.summ_fy = data.summ_fy + thread_storage[i].summ_fy;
+			data.summ_max_fy = data.summ_max_fy + thread_storage[i].summ_max_fy;
+			data.entry_counts = data.entry_counts + thread_storage[i].entry_counts;
 		}
 
 		data.xmax = xmax.value;
@@ -355,7 +341,7 @@ public:
 		return MonteCarlo_V1(a, b, ymin, ymax, ratio);
 	}
 
-	inline static T MonteCarlo_V2(const T a, const T b, const T xmin, const T xmax, const T summ, const size_t N)
+	inline static T MonteCarlo_V2(const T xmin, const T xmax, const T summ, const size_t N)
 	{
 		return (xmax - xmin) * summ / static_cast<T>(N);
 	}
@@ -370,7 +356,7 @@ public:
 			summ += point.fy;
 		}
 
-		return MonteCarlo_V2(a, b, xmin, xmax, summ, N);
+		return MonteCarlo_V2(xmin, xmax, summ, points.size());
 	}
 };
 

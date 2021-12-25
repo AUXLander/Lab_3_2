@@ -1,0 +1,16 @@
+-r
+F:\UserData\Projects\Lab_3_2\Lab_3_2_no_clr\VTune Profiler Results\Lab_3_2_no_clr\r000ps
+--stack-stitching
+--data-limit-mb=1000
+--disk-space-limit=0
+--mrte-type=java,dotnet
+--stack-unwind-limit=8388608
+--itt-config=frame
+--stackwalk=offline
+--mrte-mode=auto
+--type=cpu:counters:nostack
+--type=cpu:nostack
+--interval=100
+--app-working-dir=F:\UserData\Projects\Lab_3_2\Lab_3_2_no_clr\
+--
+F:\UserData\Projects\Lab_3_2\x64\Release\Lab_3_2_no_clr.exe
